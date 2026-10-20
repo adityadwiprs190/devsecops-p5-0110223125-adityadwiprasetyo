@@ -1,0 +1,70 @@
+name: DevSecOps CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build and Unit Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile Python Bytecode
+        run: python -m compileall src/ tests/
+
+      - name: Run Unit Tests
+        run: pytest -v
+
+  sast-scan:
+    name: SAST Security Scan & Quality Gate
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit SAST Tool
+        run: pip install bandit[toml]
+
+      - name: Run Bandit SAST Scan
+        run: >
+          bandit -r src/ -f json -o results.json
+          --severity-level medium --confidence-level medium
+        continue-on-error: true
+
+      - name: Display Scan Report
+        run: cat results.json
+
+      - name: Quality Gate Check (Fail if vulnerabilities found)
+        run: |
+          python -c "
+          import json, sys
+          data = json.load(open('results.json'))
+          issues = data.get('results', [])
+          print(f'Total isu keamanan ditemukan: {len(issues)}')
+          if issues:
+              print('QUALITY GATE FAILED: Ditemukan kerentanan keamanan pada kode!')
+              sys.exit(1)
+          print('QUALITY GATE PASSED: Tidak ada kerentanan ditemukan.')
+          sys.exit(0)
+          "
